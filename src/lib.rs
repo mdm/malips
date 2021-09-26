@@ -50,7 +50,7 @@ impl LinearProgram {
         let mut variables = vec![0.0; self.num_variables]; // initial feasible solution
         for inequality in &inequalities {
             let slack_variable = inequality.rhs
-                + variables
+                + variables // TODO: negate this?
                     .iter()
                     .take(self.num_variables)
                     .zip(inequality.lhs_coefficients.iter())
