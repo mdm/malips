@@ -3,39 +3,38 @@ use std::collections::HashSet;
 pub struct LinearProgram {
     num_variables: usize,
     objective: Vec<f64>,
-    inequalities: Vec<Inequality>,
+    constraints: Vec<Vec<f64>>,
 }
 
 impl LinearProgram {
-    fn new(num_variables: usize) -> LinearProgram {
+    fn new(objective_coefficients: Vec<f64>) -> LinearProgram {
+        let num_variables = objective_coefficients.len();
+
+        let mut objective = vec![0.0];
+        objective.extend(objective_coefficients);
+
         LinearProgram {
             num_variables,
-            objective: vec![0.0; num_variables],
-            inequalities: Vec::new(),
+            objective,
+            constraints: Vec::new(),
         }
     }
 
-    fn set_objective(&mut self, coefficients: Vec<f64>) -> Result<(), CoefficientsError> {
-        if coefficients.len() == self.num_variables {
-            self.objective = coefficients;
-
-            Ok(())
-        } else {
-            Err(CoefficientsError)
-        }
-    }
-
-    fn add_inequality(
+    fn add_constraint(
         &mut self,
         lhs_coefficients: Vec<f64>,
         rhs: f64,
     ) -> Result<(), CoefficientsError> {
         if lhs_coefficients.len() == self.num_variables {
-            let inequality = Inequality {
-                lhs_coefficients,
-                rhs,
-            };
-            self.inequalities.push(inequality);
+            let mut constraint = vec![rhs];
+            constraint.extend(lhs_coefficients.iter().map(|coefficient| -coefficient));
+
+            self.objective.push(0.0);
+            self.constraints.push(constraint);
+
+            for i in 0..self.constraints.len() {
+                self.constraints[i].push(0.0);
+            }
 
             Ok(())
         } else {
@@ -45,25 +44,27 @@ impl LinearProgram {
 
     fn solve(&self) -> Option<(Vec<f64>, f64)> {
         let objective = self.objective.clone();
-        let inequalities = self.inequalities.clone();
+        let constraints = self.constraints.clone();
 
-        let mut variables = vec![0.0; self.num_variables]; // initial feasible solution
-        for inequality in &inequalities {
-            let slack_variable = inequality.rhs
-                - variables
-                    .iter()
-                    .take(self.num_variables)
-                    .zip(inequality.lhs_coefficients.iter())
-                    .map(|(x, a)| a * x)
-                    .sum::<f64>();
+        let mut variables = vec![1.0];
 
-            variables.push(slack_variable);
+        for _ in 0..self.num_variables {
+            variables.push(0.0);
         }
 
-        let non_basic_var_indices = (0..self.num_variables).collect::<HashSet<usize>>();
-        let basic_var_indices = (0..inequalities.len())
-            .map(|i| i + self.num_variables)
-            .collect::<HashSet<usize>>();
+        for _ in 0..self.constraints.len() {
+            variables.push(0.0); // temporary value, reassigned in next loop
+        }
+
+        for i in 0..self.constraints.len() {
+            variables[1 + self.num_variables + i] = self.constraints[i]
+                .iter()
+                .zip(variables.iter())
+                .map(|(coefficient, variable)| coefficient * variable)
+                .sum();
+        }
+
+        dbg!(&variables);
 
         None
     }
@@ -85,7 +86,7 @@ impl std::error::Error for CoefficientsError {
 }
 
 #[derive(Clone)]
-struct Inequality {
+struct Constraint {
     lhs_coefficients: Vec<f64>,
     rhs: f64,
 }
@@ -96,11 +97,10 @@ mod tests {
 
     #[test]
     fn simple_example() {
-        let mut lp = LinearProgram::new(3);
-        lp.set_objective(vec![5.0, 4.0, 3.0]).unwrap();
-        lp.add_inequality(vec![2.0, 3.0, 1.0], 5.0).unwrap();
-        lp.add_inequality(vec![4.0, 1.0, 2.0], 11.0).unwrap();
-        lp.add_inequality(vec![3.0, 4.0, 2.0], 8.0).unwrap();
+        let mut lp = LinearProgram::new(vec![5.0, 4.0, 3.0]);
+        lp.add_constraint(vec![2.0, 3.0, 1.0], 5.0).unwrap();
+        lp.add_constraint(vec![4.0, 1.0, 2.0], 11.0).unwrap();
+        lp.add_constraint(vec![3.0, 4.0, 2.0], 8.0).unwrap();
 
         let solution = lp.solve().unwrap();
 
