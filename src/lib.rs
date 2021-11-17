@@ -7,7 +7,7 @@ pub struct LinearProgram {
 }
 
 impl LinearProgram {
-    fn new(objective_coefficients: Vec<f64>) -> LinearProgram {
+    pub fn new(objective_coefficients: Vec<f64>) -> LinearProgram {
         let num_variables = objective_coefficients.len();
 
         let mut objective = vec![0.0];
@@ -20,7 +20,7 @@ impl LinearProgram {
         }
     }
 
-    fn add_constraint(
+    pub fn add_constraint(
         &mut self,
         lhs_coefficients: Vec<f64>,
         rhs: f64,
@@ -42,10 +42,18 @@ impl LinearProgram {
         }
     }
 
-    fn solve(&self) -> Option<(Vec<f64>, f64)> {
+    pub fn solve(&self) -> Option<(Vec<f64>, f64)> {
         let objective = self.objective.clone();
         let constraints = self.constraints.clone();
 
+        let mut variables = self.initialize_variables();
+
+        dbg!(&variables);
+
+        None
+    }
+
+    fn initialize_variables(&self) -> Vec<f64> {
         let mut variables = vec![1.0];
 
         for _ in 0..self.num_variables {
@@ -64,9 +72,7 @@ impl LinearProgram {
                 .sum();
         }
 
-        dbg!(&variables);
-
-        None
+        variables
     }
 }
 
