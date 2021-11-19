@@ -33,7 +33,9 @@ impl LinearProgram {
             self.constraints.push(constraint);
 
             for i in 0..self.constraints.len() {
-                self.constraints[i].push(0.0);
+                while self.constraints[i].len() < 1 + self.num_variables + self.constraints.len() {
+                    self.constraints[i].push(0.0);
+                }
             }
 
             Ok(())
@@ -43,12 +45,16 @@ impl LinearProgram {
     }
 
     pub fn solve(&self) -> Option<(Vec<f64>, f64)> {
-        let objective = self.objective.clone();
-        let constraints = self.constraints.clone();
-
         let mut variables = self.initialize_variables();
 
-        dbg!(&variables);
+        dbg!(&self.objective, &self.constraints, &variables);
+
+        while let Some(entering_variable_index) = self.select_entering_variable() {
+            let leaving_variable_index = self.select_leaving_variable(entering_variable_index);
+
+            dbg!(entering_variable_index, leaving_variable_index);
+            break;
+        }
 
         None
     }
@@ -69,10 +75,46 @@ impl LinearProgram {
                 .iter()
                 .zip(variables.iter())
                 .map(|(coefficient, variable)| coefficient * variable)
-                .sum();
+                .sum(); // TODO: do we need to sum all of these or is the first term sufficent?
         }
 
         variables
+    }
+
+    fn select_entering_variable(&self) -> Option<usize> {
+        for i in 1..self.objective.len() {
+            if self.objective[i] > 0.0 {
+                return Some(i);
+            }
+        }
+
+        None
+    }
+
+    fn select_leaving_variable(&self, entering_variable_index: usize) -> usize {
+        let mut leaving_variable_index = None;
+        let mut least_upper_bound = std::f64::INFINITY;
+        
+        for i in 0..self.constraints.len() {
+            if self.constraints[i][entering_variable_index] > 0.0 {
+                continue;
+            }
+
+            assert!(self.constraints[i][entering_variable_index] < 0.0);
+            
+            let upper_bound = self.constraints[i][0] / -self.constraints[i][entering_variable_index]; // TODO: handle division by 0
+            if leaving_variable_index.is_none() || upper_bound < least_upper_bound {
+                leaving_variable_index = Some(i);
+                least_upper_bound = upper_bound;
+            }
+        }
+
+        assert!(leaving_variable_index.is_some());
+        leaving_variable_index.unwrap()
+    }
+
+    fn pivot(&mut self, entering_variable_index: usize, leaving_variable_index: usize) {
+        unimplemented!();
     }
 }
 
