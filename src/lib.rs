@@ -1,9 +1,7 @@
-use std::collections::HashSet;
-
 pub struct LinearProgram {
     num_variables: usize,
     objective: Vec<f64>,
-    constraints: Vec<Vec<f64>>,
+    constraints: Vec<Constraint>,
 }
 
 impl LinearProgram {
@@ -26,15 +24,18 @@ impl LinearProgram {
         rhs: f64,
     ) -> Result<(), CoefficientsError> {
         if lhs_coefficients.len() == self.num_variables {
-            let mut constraint = vec![rhs];
-            constraint.extend(lhs_coefficients.iter().map(|coefficient| -coefficient));
+            let mut constraint = Constraint {
+                index: 1 + self.num_variables,
+                coefficients: vec![rhs],
+            };
+            constraint.coefficients.extend(lhs_coefficients.iter().map(|coefficient| -coefficient));
 
             self.objective.push(0.0);
             self.constraints.push(constraint);
 
             for i in 0..self.constraints.len() {
-                while self.constraints[i].len() < 1 + self.num_variables + self.constraints.len() {
-                    self.constraints[i].push(0.0);
+                while self.constraints[i].coefficients.len() < 1 + self.num_variables + self.constraints.len() {
+                    self.constraints[i].coefficients.push(0.0);
                 }
             }
 
@@ -44,7 +45,7 @@ impl LinearProgram {
         }
     }
 
-    pub fn solve(&self) -> Option<(Vec<f64>, f64)> {
+    pub fn solve(&mut self) -> Option<(Vec<f64>, f64)> {
         let mut variables = self.initialize_variables();
 
         dbg!(&self.objective, &self.constraints, &variables);
@@ -53,6 +54,8 @@ impl LinearProgram {
             let leaving_variable_index = self.select_leaving_variable(entering_variable_index);
 
             dbg!(entering_variable_index, leaving_variable_index);
+            self.pivot(entering_variable_index, leaving_variable_index);
+            dbg!(&self.objective, &self.constraints);
             break;
         }
 
@@ -71,7 +74,7 @@ impl LinearProgram {
         }
 
         for i in 0..self.constraints.len() {
-            variables[1 + self.num_variables + i] = self.constraints[i]
+            variables[1 + self.num_variables + i] = self.constraints[i].coefficients
                 .iter()
                 .zip(variables.iter())
                 .map(|(coefficient, variable)| coefficient * variable)
@@ -96,13 +99,13 @@ impl LinearProgram {
         let mut least_upper_bound = std::f64::INFINITY;
         
         for i in 0..self.constraints.len() {
-            if self.constraints[i][entering_variable_index] > 0.0 {
+            if self.constraints[i].coefficients[entering_variable_index] > 0.0 {
                 continue;
             }
 
-            assert!(self.constraints[i][entering_variable_index] < 0.0);
+            assert!(self.constraints[i].coefficients[entering_variable_index] < 0.0);
             
-            let upper_bound = self.constraints[i][0] / -self.constraints[i][entering_variable_index]; // TODO: handle division by 0
+            let upper_bound = self.constraints[i].coefficients[0] / -self.constraints[i].coefficients[entering_variable_index]; // TODO: handle division by 0
             if leaving_variable_index.is_none() || upper_bound < least_upper_bound {
                 leaving_variable_index = Some(i);
                 least_upper_bound = upper_bound;
@@ -110,11 +113,34 @@ impl LinearProgram {
         }
 
         assert!(leaving_variable_index.is_some());
+        dbg!(least_upper_bound);
         leaving_variable_index.unwrap()
     }
 
     fn pivot(&mut self, entering_variable_index: usize, leaving_variable_index: usize) {
-        unimplemented!();
+        let index = self.constraints[leaving_variable_index].index;
+        self.constraints[leaving_variable_index].coefficients[index] = -1.0;
+
+        let update_coefficients = |old_coefficients: &Vec<f64>, leaving_variable_coefficients: &Vec<f64>| {
+            let scaling_factor = old_coefficients[entering_variable_index] / -leaving_variable_coefficients[entering_variable_index];
+            old_coefficients.iter().zip(leaving_variable_coefficients.iter()).map(|(old_coefficient, leaving_variable_coefficient)| {
+                old_coefficient + scaling_factor * leaving_variable_coefficient
+            }).collect()
+        };
+
+        self.objective = update_coefficients(&self.objective, &self.constraints[leaving_variable_index].coefficients);
+        for i in 0..self.constraints.len() {
+            if i != leaving_variable_index {
+                self.constraints[i].coefficients = update_coefficients(&self.constraints[i].coefficients, &self.constraints[leaving_variable_index].coefficients);
+            }
+        }
+
+        // rearrange coefficients for entering variable constraint
+        let scaling_factor = 1.0 / -self.constraints[leaving_variable_index].coefficients[entering_variable_index];
+        self.constraints[leaving_variable_index].coefficients[entering_variable_index] = 0.0;
+        for i in 0..self.constraints[leaving_variable_index].coefficients.len() {
+            self.constraints[leaving_variable_index].coefficients[i] *= scaling_factor;
+        }
     }
 }
 
@@ -133,10 +159,10 @@ impl std::error::Error for CoefficientsError {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct Constraint {
-    lhs_coefficients: Vec<f64>,
-    rhs: f64,
+    index: usize,
+    coefficients: Vec<f64>,
 }
 
 #[cfg(test)]
@@ -151,6 +177,7 @@ mod tests {
         lp.add_constraint(vec![3.0, 4.0, 2.0], 8.0).unwrap();
 
         let solution = lp.solve().unwrap();
+        dbg!(&solution);
 
         assert_eq!(solution.1, 13.0);
     }
