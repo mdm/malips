@@ -49,21 +49,18 @@ impl LinearProgram {
         }
     }
 
-    pub fn solve(&mut self) -> Option<(Vec<f64>, f64)> {
-        let mut variables = self.initialize_variables();
+    pub fn solve(mut self) -> Option<(Vec<f64>, f64)> {
+        dbg!(&self.objective, &self.constraints);
 
-        dbg!(&self.objective, &self.constraints, &variables);
+        // TODO: detect case where we have no constraints => unbounded program
 
-        while let Some(entering_variable_index) = self.select_entering_variable() {
-            dbg!(entering_variable_index);
-
-            let leaving_variable_index = self.select_leaving_variable(entering_variable_index);
-            dbg!(leaving_variable_index);
-
-            self.pivot(entering_variable_index, leaving_variable_index);
-            dbg!(&self.objective, &self.constraints);
-            // break;
+        if !self.solve_phase1() {
+            return None; // program is infeasible
         }
+
+        dbg!(&self.objective, &self.constraints);
+
+        self.pivot_until_solved();
 
         let mut solution = Vec::new();
         for i in 1..(1 + self.num_variables) {
@@ -79,6 +76,45 @@ impl LinearProgram {
         }
 
         Some((solution, self.objective[0]))
+    }
+
+    fn solve_phase1(&mut self) -> bool {
+        if self
+            .constraints
+            .iter()
+            .all(|constraint| constraint.coefficients[0] >= 0.0)
+        {
+            return true;
+        }
+
+        // set up auxiliary program
+
+        let mut auxiliary_objective = vec![0.0; self.objective.len()];
+        auxiliary_objective.push(-1.0);
+
+        let original_objective = std::mem::replace(&mut self.objective, auxiliary_objective);
+
+        for i in 0..self.constraints.len() {
+            self.constraints[i].coefficients.push(-1.0);
+        }
+
+        let initial_entering_variable_index = self.objective.len();
+        let initial_leaving_variable_index = self
+            .constraints
+            .iter()
+            .enumerate()
+            .min_by(|(_, constraint_a), (_, constraint_b)| {
+                constraint_a.coefficients[0].partial_cmp(&constraint_b.coefficients[0]).expect("Expected basic variable not to be NaN.")
+            })
+            .expect("Expected to find a most infeasible constraint.")
+            .0;
+
+        self.pivot(initial_entering_variable_index, initial_leaving_variable_index);
+        self.pivot_until_solved();
+
+        // transform back into feasible original program
+
+        unimplemented!()
     }
 
     fn initialize_variables(&self) -> Vec<f64> {
@@ -125,6 +161,7 @@ impl LinearProgram {
 
             let upper_bound = self.constraints[i].coefficients[0]
                 / -self.constraints[i].coefficients[entering_variable_index]; // TODO: handle division by 0
+            dbg!(upper_bound);
             if leaving_variable_index.is_none() || upper_bound < least_upper_bound {
                 leaving_variable_index = Some(i);
                 least_upper_bound = upper_bound;
@@ -173,6 +210,19 @@ impl LinearProgram {
         self.constraints[leaving_variable_index].coefficients[entering_variable_index] = 0.0;
         for i in 0..self.constraints[leaving_variable_index].coefficients.len() {
             self.constraints[leaving_variable_index].coefficients[i] *= scaling_factor;
+        }
+    }
+
+    fn pivot_until_solved(&mut self) {
+        while let Some(entering_variable_index) = self.select_entering_variable() {
+            dbg!(entering_variable_index);
+
+            let leaving_variable_index = self.select_leaving_variable(entering_variable_index);
+            dbg!(leaving_variable_index);
+
+            self.pivot(entering_variable_index, leaving_variable_index);
+            dbg!(&self.objective, &self.constraints);
+            // break;
         }
     }
 }
