@@ -87,7 +87,7 @@ impl LinearProgram {
             return true;
         }
 
-        // set up auxiliary program
+        // set up and solve auxiliary program
 
         let mut auxiliary_objective = vec![0.0; self.objective.len()];
         auxiliary_objective.push(-1.0);
@@ -115,29 +115,6 @@ impl LinearProgram {
         // transform back into feasible original program
 
         unimplemented!()
-    }
-
-    fn initialize_variables(&self) -> Vec<f64> {
-        let mut variables = vec![1.0];
-
-        for _ in 0..self.num_variables {
-            variables.push(0.0);
-        }
-
-        for _ in 0..self.constraints.len() {
-            variables.push(0.0); // temporary value, reassigned in next loop
-        }
-
-        for i in 0..self.constraints.len() {
-            variables[1 + self.num_variables + i] = self.constraints[i]
-                .coefficients
-                .iter()
-                .zip(variables.iter())
-                .map(|(coefficient, variable)| coefficient * variable)
-                .sum(); // TODO: do we need to sum all of these or is the first term sufficent?
-        }
-
-        variables
     }
 
     fn select_entering_variable(&self) -> Option<usize> {
@@ -253,7 +230,7 @@ mod tests {
     use crate::LinearProgram;
 
     #[test]
-    fn simple_example_1() {
+    fn all_rhs_non_negative_1() {
         let mut lp = LinearProgram::new(vec![5.0, 4.0, 3.0]);
         lp.add_constraint(vec![2.0, 3.0, 1.0], 5.0).unwrap();
         lp.add_constraint(vec![4.0, 1.0, 2.0], 11.0).unwrap();
@@ -266,7 +243,7 @@ mod tests {
     }
 
     #[test]
-    fn simple_example_2() {
+    fn all_rhs_non_negative_2() {
         let mut lp = LinearProgram::new(vec![6.0, 8.0, 5.0, 9.0]);
         lp.add_constraint(vec![2.0, 1.0, 1.0, 3.0], 5.0).unwrap();
         lp.add_constraint(vec![1.0, 3.0, 1.0, 2.0], 3.0).unwrap();
