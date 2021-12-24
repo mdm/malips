@@ -114,6 +114,12 @@ impl LinearProgram {
 
         // transform back into feasible original program
 
+        for i in 0..self.constraints.len() {
+            self.constraints[i].coefficients.pop();
+        }
+
+        // TODO: fix original_objective
+
         unimplemented!()
     }
 
