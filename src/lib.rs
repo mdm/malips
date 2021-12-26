@@ -1,5 +1,4 @@
-use core::num;
-
+#[cfg(test)]
 #[macro_use]
 extern crate approx;
 
@@ -137,13 +136,18 @@ impl LinearProgram {
         let mut restated_objective = vec![0.0; original_objective.len()];
         for i in 1..(1 + self.num_variables) {
             // TODO: loop from 0 for objectives with constant term
-            if let Some(constraint) = self
+            match self
                 .constraints
                 .iter()
                 .find(|constraint| constraint.index == i)
             {
-                for j in 0..restated_objective.len() {
-                    restated_objective[j] += original_objective[i] * constraint.coefficients[j];
+                Some(constraint) => {
+                    for j in 0..restated_objective.len() {
+                        restated_objective[j] += original_objective[i] * constraint.coefficients[j];
+                    }
+                }
+                None => {
+                    restated_objective[i] += original_objective[i];
                 }
             }
         }
@@ -160,21 +164,6 @@ impl LinearProgram {
         }
 
         None
-
-        // if let Some((i, largest_coefficient)) =
-        //     self.objective.iter().enumerate().skip(1).max_by(|(_, a), (_, b)| {
-        //         a.partial_cmp(b)
-        //             .expect("Expected non-basic variable coefficient not to be NaN.")
-        //     })
-        // {
-        //     if i > 0 && *largest_coefficient > 0.0 {
-        //         return Some(i);
-        //     } else {
-        //         return None;
-        //     }
-        // }
-
-        // None
     }
 
     fn select_leaving_variable(&self, entering_variable_index: usize) -> usize {
@@ -202,7 +191,10 @@ impl LinearProgram {
 
     fn pivot(&mut self, entering_variable_index: usize, leaving_variable_index: usize) {
         println!("Before pivot:\n{}", self);
-        println!("Entering variable: {}, leaving variable {}", entering_variable_index, leaving_variable_index);
+        println!(
+            "Entering variable: {}, leaving variable {}",
+            entering_variable_index, leaving_variable_index
+        );
 
         let index = self.constraints[leaving_variable_index].index;
         self.constraints[leaving_variable_index].coefficients[index] = -1.0;
@@ -281,16 +273,30 @@ impl std::fmt::Display for LinearProgram {
             if self.constraints[i].index == 0 {
                 unreachable!();
             } else if self.constraints[i].index < 1 + self.num_variables {
-                write!(f, "{:>1$}", format!("x{} =", self.constraints[i].index), label_width)?;
+                write!(
+                    f,
+                    "{:>1$}",
+                    format!("x{} =", self.constraints[i].index),
+                    label_width
+                )?;
             } else if self.constraints[i].index < 1 + self.num_variables + self.constraints.len() {
-                write!(f, "{:>1$}", format!("w{} =", self.constraints[i].index - self.num_variables), label_width)?;
+                write!(
+                    f,
+                    "{:>1$}",
+                    format!("w{} =", self.constraints[i].index - self.num_variables),
+                    label_width
+                )?;
             } else {
                 write!(f, "{:>1$}", "x0 =", label_width)?;
             }
 
             for j in 0..self.constraints[i].coefficients.len() {
                 write!(f, " ")?;
-                write!(f, "{:1$.3}", self.constraints[i].coefficients[j], column_width)?;
+                write!(
+                    f,
+                    "{:1$.3}",
+                    self.constraints[i].coefficients[j], column_width
+                )?;
             }
             writeln!(f)?;
         }
@@ -359,6 +365,6 @@ mod tests {
 
         assert!(abs_diff_eq!(solution.0[0], 4.0 / 3.0));
         assert!(abs_diff_eq!(solution.0[1], 1.0 / 3.0));
-        assert!(abs_diff_eq!(solution.1,  -3.0));
+        assert!(abs_diff_eq!(solution.1, -3.0));
     }
 }
