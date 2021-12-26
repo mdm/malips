@@ -132,7 +132,6 @@ impl LinearProgram {
             self.constraints[i].coefficients.pop();
         }
 
-        // TODO: fix original_objective
         let mut restated_objective = vec![0.0; original_objective.len()];
         for i in 1..(1 + self.num_variables) {
             // TODO: loop from 0 for objectives with constant term
@@ -355,7 +354,7 @@ mod tests {
     }
 
     #[test]
-    fn phase_1_gives_optimum() {
+    fn phase_1_necessary() {
         let mut lp = LinearProgram::new(vec![-2.0, -1.0]);
         lp.add_constraint(vec![-1.0, 1.0], -1.0).unwrap();
         lp.add_constraint(vec![-1.0, -2.0], -2.0).unwrap();
@@ -365,6 +364,6 @@ mod tests {
 
         assert!(abs_diff_eq!(solution.0[0], 4.0 / 3.0));
         assert!(abs_diff_eq!(solution.0[1], 1.0 / 3.0));
-        assert!(abs_diff_eq!(solution.1, -3.0));
+        assert_eq!(solution.1, -3.0);
     }
 }
