@@ -153,28 +153,28 @@ impl LinearProgram {
     }
 
     fn select_entering_variable(&self) -> Option<usize> {
-        // for i in 1..self.objective.len() {
-        //     if self.objective[i] > 0.0 {
-        //         return Some(i);
-        //     }
-        // }
-
-        // None
-
-        if let Some((i, largest_coefficient)) =
-            self.objective.iter().enumerate().max_by(|(_, a), (_, b)| {
-                a.partial_cmp(b)
-                    .expect("Expected non-basic variable coefficient not to be NaN.")
-            })
-        {
-            if i > 0 && *largest_coefficient > 0.0 {
+        for i in 1..self.objective.len() {
+            if self.objective[i] > 0.0 {
                 return Some(i);
-            } else {
-                return None;
             }
         }
 
         None
+
+        // if let Some((i, largest_coefficient)) =
+        //     self.objective.iter().enumerate().skip(1).max_by(|(_, a), (_, b)| {
+        //         a.partial_cmp(b)
+        //             .expect("Expected non-basic variable coefficient not to be NaN.")
+        //     })
+        // {
+        //     if i > 0 && *largest_coefficient > 0.0 {
+        //         return Some(i);
+        //     } else {
+        //         return None;
+        //     }
+        // }
+
+        // None
     }
 
     fn select_leaving_variable(&self, entering_variable_index: usize) -> usize {
@@ -266,8 +266,12 @@ impl std::fmt::Display for LinearProgram {
             write!(f, " ")?;
             write!(f, "{:1$}", format!("w{}", i + 1), column_width)?;
         }
+        if self.objective.len() > 1 + self.num_variables + self.constraints.len() {
+            write!(f, " ")?;
+            write!(f, "{:1$}", "x0", column_width)?;
+        }
         writeln!(f)?;
-        write!(f, "{:1$}", "", label_width)?;
+        write!(f, "{:>1$}", "C =", label_width)?;
         for i in 0..self.objective.len() {
             write!(f, " ")?;
             write!(f, "{:1$.3}", self.objective[i], column_width)?;
@@ -276,10 +280,10 @@ impl std::fmt::Display for LinearProgram {
         for i in 0..self.constraints.len() {
             if self.constraints[i].index == 0 {
                 unreachable!();
-            } else if self.constraints[i].index <= 1 + self.num_variables {
-                write!(f, "{:>1$}", format!("x{} =", i + 1), label_width)?;
-            } else if self.constraints[i].index <= 1 + self.num_variables + self.constraints.len() {
-                write!(f, "{:>1$}", format!("w{} =", i + 1), label_width)?;
+            } else if self.constraints[i].index < 1 + self.num_variables {
+                write!(f, "{:>1$}", format!("x{} =", self.constraints[i].index), label_width)?;
+            } else if self.constraints[i].index < 1 + self.num_variables + self.constraints.len() {
+                write!(f, "{:>1$}", format!("w{} =", self.constraints[i].index - self.num_variables), label_width)?;
             } else {
                 write!(f, "{:>1$}", "x0 =", label_width)?;
             }
@@ -353,8 +357,8 @@ mod tests {
 
         let solution = lp.solve().unwrap();
 
-        abs_diff_eq!(solution.0[0], 4.0 / 3.0);
-        abs_diff_eq!(solution.0[1], 1.0 / 3.0);
-        abs_diff_eq!(solution.1,  -3.0);
+        assert!(abs_diff_eq!(solution.0[0], 4.0 / 3.0));
+        assert!(abs_diff_eq!(solution.0[1], 1.0 / 3.0));
+        assert!(abs_diff_eq!(solution.1,  -3.0));
     }
 }
