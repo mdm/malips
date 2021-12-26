@@ -1,3 +1,9 @@
+use core::num;
+
+#[macro_use]
+extern crate approx;
+
+#[derive(Debug)]
 pub struct LinearProgram {
     num_variables: usize,
     objective: Vec<f64>,
@@ -50,7 +56,7 @@ impl LinearProgram {
     }
 
     pub fn solve(mut self) -> Option<(Vec<f64>, f64)> {
-        dbg!(&self.objective, &self.constraints);
+        println!("Before solving:\n{}", self);
 
         // TODO: detect case where we have no constraints => unbounded program
 
@@ -58,7 +64,7 @@ impl LinearProgram {
             return None; // program is infeasible
         }
 
-        dbg!(&self.objective, &self.constraints);
+        println!("After phase 1:\n{}", self);
 
         self.pivot_until_solved();
 
@@ -95,22 +101,31 @@ impl LinearProgram {
         let original_objective = std::mem::replace(&mut self.objective, auxiliary_objective);
 
         for i in 0..self.constraints.len() {
-            self.constraints[i].coefficients.push(-1.0);
+            self.constraints[i].coefficients.push(1.0);
         }
 
-        let initial_entering_variable_index = self.objective.len();
+        let initial_entering_variable_index = self.objective.len() - 1;
         let initial_leaving_variable_index = self
             .constraints
             .iter()
             .enumerate()
             .min_by(|(_, constraint_a), (_, constraint_b)| {
-                constraint_a.coefficients[0].partial_cmp(&constraint_b.coefficients[0]).expect("Expected basic variable not to be NaN.")
+                constraint_a.coefficients[0]
+                    .partial_cmp(&constraint_b.coefficients[0])
+                    .expect("Expected basic variable coefficient not to be NaN.")
             })
             .expect("Expected to find a most infeasible constraint.")
             .0;
 
-        self.pivot(initial_entering_variable_index, initial_leaving_variable_index);
+        self.pivot(
+            initial_entering_variable_index,
+            initial_leaving_variable_index,
+        );
         self.pivot_until_solved();
+
+        if self.objective[0] != 0.0 {
+            return false; // original program is infeasible
+        }
 
         // transform back into feasible original program
 
@@ -119,14 +134,43 @@ impl LinearProgram {
         }
 
         // TODO: fix original_objective
+        let mut restated_objective = vec![0.0; original_objective.len()];
+        for i in 1..(1 + self.num_variables) {
+            // TODO: loop from 0 for objectives with constant term
+            if let Some(constraint) = self
+                .constraints
+                .iter()
+                .find(|constraint| constraint.index == i)
+            {
+                for j in 0..restated_objective.len() {
+                    restated_objective[j] += original_objective[i] * constraint.coefficients[j];
+                }
+            }
+        }
 
-        unimplemented!()
+        self.objective = restated_objective;
+        true
     }
 
     fn select_entering_variable(&self) -> Option<usize> {
-        for i in 1..self.objective.len() {
-            if self.objective[i] > 0.0 {
+        // for i in 1..self.objective.len() {
+        //     if self.objective[i] > 0.0 {
+        //         return Some(i);
+        //     }
+        // }
+
+        // None
+
+        if let Some((i, largest_coefficient)) =
+            self.objective.iter().enumerate().max_by(|(_, a), (_, b)| {
+                a.partial_cmp(b)
+                    .expect("Expected non-basic variable coefficient not to be NaN.")
+            })
+        {
+            if i > 0 && *largest_coefficient > 0.0 {
                 return Some(i);
+            } else {
+                return None;
             }
         }
 
@@ -157,6 +201,9 @@ impl LinearProgram {
     }
 
     fn pivot(&mut self, entering_variable_index: usize, leaving_variable_index: usize) {
+        println!("Before pivot:\n{}", self);
+        println!("Entering variable: {}, leaving variable {}", entering_variable_index, leaving_variable_index);
+
         let index = self.constraints[leaving_variable_index].index;
         self.constraints[leaving_variable_index].coefficients[index] = -1.0;
 
@@ -194,19 +241,56 @@ impl LinearProgram {
         for i in 0..self.constraints[leaving_variable_index].coefficients.len() {
             self.constraints[leaving_variable_index].coefficients[i] *= scaling_factor;
         }
+
+        println!("After pivot:\n{}", self);
     }
 
     fn pivot_until_solved(&mut self) {
         while let Some(entering_variable_index) = self.select_entering_variable() {
-            dbg!(entering_variable_index);
-
             let leaving_variable_index = self.select_leaving_variable(entering_variable_index);
-            dbg!(leaving_variable_index);
-
             self.pivot(entering_variable_index, leaving_variable_index);
-            dbg!(&self.objective, &self.constraints);
-            // break;
         }
+    }
+}
+
+impl std::fmt::Display for LinearProgram {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let column_width = 8;
+        let label_width = 4;
+        write!(f, "{:1$}", "", column_width + label_width + 1)?;
+        for i in 0..self.num_variables {
+            write!(f, " ")?;
+            write!(f, "{:1$}", format!("x{}", i + 1), column_width)?;
+        }
+        for i in 0..self.constraints.len() {
+            write!(f, " ")?;
+            write!(f, "{:1$}", format!("w{}", i + 1), column_width)?;
+        }
+        writeln!(f)?;
+        write!(f, "{:1$}", "", label_width)?;
+        for i in 0..self.objective.len() {
+            write!(f, " ")?;
+            write!(f, "{:1$.3}", self.objective[i], column_width)?;
+        }
+        writeln!(f)?;
+        for i in 0..self.constraints.len() {
+            if self.constraints[i].index == 0 {
+                unreachable!();
+            } else if self.constraints[i].index <= 1 + self.num_variables {
+                write!(f, "{:>1$}", format!("x{} =", i + 1), label_width)?;
+            } else if self.constraints[i].index <= 1 + self.num_variables + self.constraints.len() {
+                write!(f, "{:>1$}", format!("w{} =", i + 1), label_width)?;
+            } else {
+                write!(f, "{:>1$}", "x0 =", label_width)?;
+            }
+
+            for j in 0..self.constraints[i].coefficients.len() {
+                write!(f, " ")?;
+                write!(f, "{:1$.3}", self.constraints[i].coefficients[j], column_width)?;
+            }
+            writeln!(f)?;
+        }
+        writeln!(f)
     }
 }
 
@@ -258,5 +342,19 @@ mod tests {
 
         assert_eq!(solution.0, vec![2.0, 0.0, 1.0, 0.0]);
         assert_eq!(solution.1, 17.0);
+    }
+
+    #[test]
+    fn phase_1_gives_optimum() {
+        let mut lp = LinearProgram::new(vec![-2.0, -1.0]);
+        lp.add_constraint(vec![-1.0, 1.0], -1.0).unwrap();
+        lp.add_constraint(vec![-1.0, -2.0], -2.0).unwrap();
+        lp.add_constraint(vec![0.0, 1.0], 1.0).unwrap();
+
+        let solution = lp.solve().unwrap();
+
+        abs_diff_eq!(solution.0[0], 4.0 / 3.0);
+        abs_diff_eq!(solution.0[1], 1.0 / 3.0);
+        abs_diff_eq!(solution.1,  -3.0);
     }
 }
