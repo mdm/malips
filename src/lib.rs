@@ -65,22 +65,24 @@ impl LinearProgram {
 
         println!("After phase 1:\n{}", self);
 
-        self.pivot_until_solved();
-
-        let mut solution = Vec::new();
-        for i in 1..(1 + self.num_variables) {
-            if let Some(constraint) = self
-                .constraints
-                .iter()
-                .find(|constraint| constraint.index == i)
-            {
-                solution.push(constraint.coefficients[0]);
-            } else {
-                solution.push(0.0);
+        if self.pivot_until_solved() {
+            let mut solution = Vec::new();
+            for i in 1..(1 + self.num_variables) {
+                if let Some(constraint) = self
+                    .constraints
+                    .iter()
+                    .find(|constraint| constraint.index == i)
+                {
+                    solution.push(constraint.coefficients[0]);
+                } else {
+                    solution.push(0.0);
+                }
             }
-        }
 
-        Some((solution, self.objective[0]))
+            Some((solution, self.objective[0]))
+        } else {
+            Some((vec![std::f64::INFINITY; self.num_variables], std::f64::INFINITY)) // program is unbounded
+        }
     }
 
     fn solve_phase1(&mut self) -> bool {
@@ -120,7 +122,7 @@ impl LinearProgram {
             initial_entering_variable_index,
             initial_leaving_variable_index,
         );
-        self.pivot_until_solved();
+        assert!(self.pivot_until_solved()); // assume auxiliary problem is not unbounded
 
         if self.objective[0] != 0.0 {
             return false; // original program is infeasible
@@ -165,27 +167,38 @@ impl LinearProgram {
         None
     }
 
-    fn select_leaving_variable(&self, entering_variable_index: usize) -> usize {
+    fn select_leaving_variable(&self, entering_variable_index: usize) -> Option<usize> {
         let mut leaving_variable_index = None;
         let mut least_upper_bound = std::f64::INFINITY;
 
+        dbg!(entering_variable_index);
+
         for i in 0..self.constraints.len() {
+            dbg!(i, self.constraints[i].coefficients[entering_variable_index]);
+
+            let upper_bound = if self.constraints[i].coefficients[0] == 0.0
+                && self.constraints[i].coefficients[entering_variable_index] == 0.0
+            {
+                0.0
+            } else {
+                self.constraints[i].coefficients[0]
+                    / -self.constraints[i].coefficients[entering_variable_index]
+            };
+
+            dbg!(upper_bound);
+
             if self.constraints[i].coefficients[entering_variable_index] >= 0.0 {
                 continue;
             }
 
-            let upper_bound = self.constraints[i].coefficients[0]
-                / -self.constraints[i].coefficients[entering_variable_index]; // TODO: handle division by 0
-            dbg!(upper_bound);
             if leaving_variable_index.is_none() || upper_bound < least_upper_bound {
                 leaving_variable_index = Some(i);
                 least_upper_bound = upper_bound;
             }
         }
 
-        assert!(leaving_variable_index.is_some());
         dbg!(least_upper_bound);
-        leaving_variable_index.unwrap()
+        leaving_variable_index
     }
 
     fn pivot(&mut self, entering_variable_index: usize, leaving_variable_index: usize) {
@@ -236,11 +249,19 @@ impl LinearProgram {
         println!("After pivot:\n{}", self);
     }
 
-    fn pivot_until_solved(&mut self) {
+    fn pivot_until_solved(&mut self) -> bool {
         while let Some(entering_variable_index) = self.select_entering_variable() {
-            let leaving_variable_index = self.select_leaving_variable(entering_variable_index);
-            self.pivot(entering_variable_index, leaving_variable_index);
+            match self.select_leaving_variable(entering_variable_index) {
+                Some(leaving_variable_index) => {
+                    self.pivot(entering_variable_index, leaving_variable_index);
+                }
+                None => {
+                    return false;
+                }                
+            }
         }
+
+        true
     }
 }
 
@@ -365,5 +386,18 @@ mod tests {
         assert!(abs_diff_eq!(solution.0[0], 4.0 / 3.0));
         assert!(abs_diff_eq!(solution.0[1], 1.0 / 3.0));
         assert_eq!(solution.1, -3.0);
+    }
+
+    #[test]
+    fn unbounded() {
+        let mut lp = LinearProgram::new(vec![0.0, 2.0, 1.0]);
+        lp.add_constraint(vec![1.0, -1.0, 1.0], 5.0).unwrap();
+        lp.add_constraint(vec![-2.0, 1.0, 0.0], 3.0).unwrap();
+        lp.add_constraint(vec![0.0, 1.0, -2.0], 5.0).unwrap();
+
+        let solution = lp.solve().unwrap();
+
+        assert_eq!(solution.0, vec![std::f64::INFINITY, std::f64::INFINITY, std::f64::INFINITY]);
+        assert_eq!(solution.1, std::f64::INFINITY);
     }
 }
