@@ -66,6 +66,7 @@ impl LinearProgram {
         println!("After phase 1:\n{}", self);
 
         if self.pivot_until_solved() {
+            // optimal solution found
             let mut solution = Vec::new();
             for i in 1..(1 + self.num_variables) {
                 if let Some(constraint) = self
@@ -81,7 +82,27 @@ impl LinearProgram {
 
             Some((solution, self.objective[0]))
         } else {
-            Some((vec![std::f64::INFINITY; self.num_variables], std::f64::INFINITY)) // program is unbounded
+            // program is unbounded
+            let entering_variable = self.select_entering_variable().expect(
+                "Expected to find entering variable, because pivot_until_solved() returned false",
+            );
+
+            let mut solution = Vec::new();
+            for i in 1..(1 + self.num_variables) {
+                if let Some(_) = self
+                    .constraints
+                    .iter()
+                    .find(|constraint| constraint.index == i)
+                {
+                    solution.push(std::f64::INFINITY);
+                } else if i == entering_variable {
+                    solution.push(std::f64::INFINITY);
+                } else {
+                    solution.push(0.0);
+                }
+            }
+
+            Some((solution, std::f64::INFINITY))
         }
     }
 
@@ -257,7 +278,7 @@ impl LinearProgram {
                 }
                 None => {
                     return false;
-                }                
+                }
             }
         }
 
@@ -397,7 +418,10 @@ mod tests {
 
         let solution = lp.solve().unwrap();
 
-        assert_eq!(solution.0, vec![std::f64::INFINITY, std::f64::INFINITY, std::f64::INFINITY]);
+        assert_eq!(
+            solution.0,
+            vec![std::f64::INFINITY, std::f64::INFINITY, std::f64::INFINITY]
+        );
         assert_eq!(solution.1, std::f64::INFINITY);
     }
 }
